@@ -247,6 +247,12 @@ type Go {
 type Tools {
   let go: Go!
 
+  agent(
+    llm: LLM!,
+  ): LLM! @agent {
+    llm.withTools(currentNode)
+  }
+
   """
   Run `go doc` to read Go package or symbol docs.
   """
