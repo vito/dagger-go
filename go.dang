@@ -8,12 +8,12 @@ type Go {
   """
   Go version used for the default Go base image. Null when a custom base is set.
   """
-  pub version: String
+  version: String
 
   """
   Base image used for Go test, generate, and helper containers.
   """
-  pub base: Container!
+  base: Container!
 
   new(
     """
@@ -68,29 +68,29 @@ type Go {
   Use this for fixtures, generator inputs, or other files not covered by the
   built-in Go patterns.
   """
-  pub includeExtraFiles: [String!]! = []
+  includeExtraFiles: [String!]! = []
 
   """
   Module roots to lint ("!" excludes; see the `lint` constructor argument).
   """
-  pub lint: [String!]! = ["**"]
+  lint: [String!]! = ["**"]
 
   """
   Module roots to test ("!" excludes; see the `lint` constructor argument).
   """
-  pub test: [String!]! = ["**"]
+  test: [String!]! = ["**"]
 
   """
   Module roots to run go generate in ("!" excludes; see `lint`).
   """
-  pub generate: [String!]! = ["**"]
+  generate: [String!]! = ["**"]
 
   """
   Go modules discovered from go.mod files at or below the working directory,
   plus the enclosing module when the cwd is inside one. Optional include/exclude
   patterns filter the discovered module roots.
   """
-  pub modules(
+  modules(
     ws: Workspace!,
     include: [String!]! = [],
     exclude: [String!]! = [],
@@ -101,7 +101,7 @@ type Go {
     # Discovery is delegated to the polyfill Workspace.findConfigDirs (honoring
     # dagger/dagger#13688). Its results are cwd-relative, so resolve each back
     # to a workspace-root path before it becomes a module root.
-    polyfill()
+    polyfill
       .workspace(ws)
       .findConfigDirs(["go.mod"])
       .filter { modPath =>
@@ -119,9 +119,9 @@ type Go {
         )
       }
       .filter { mod =>
-        (includeSkipLint or mod.skipLint(ws) == false) and
-        (includeSkipTest or mod.skipTest(ws) == false) and
-        (includeSkipGenerate or mod.skipGenerate(ws) == false)
+        (includeSkipLint or mod.skipLint(ws) == false)
+          and (includeSkipTest or mod.skipTest(ws) == false)
+          and (includeSkipGenerate or mod.skipGenerate(ws) == false)
       }
   }
 
@@ -149,7 +149,7 @@ type Go {
   By default, path may be a module root or a directory inside a module. Set
   findUp to false when path is already a module root and no lookup is needed.
   """
-  pub module(ws: Workspace!, path: String!, findUp: Boolean! = true): GoModule! {
+  module(ws: Workspace!, path: String!, findUp: Boolean! = true): GoModule! {
     GoModule(
       path: if (findUp) {
         let foundGoModPath = ws.findUp("go.mod", path)
@@ -177,7 +177,7 @@ type Go {
   Run golangci-lint in every discovered Go module.
   Modules configured to skip lint are skipped.
   """
-  pub lintAll(ws: Workspace!): Void @check {
+  lintAll(ws: Workspace!): Void @check {
     let layers = modules(ws, includeSkipLint: false).reduce(directory) { layers, mod =>
       layers.withDirectory(
         mod.path,
@@ -196,7 +196,7 @@ type Go {
   Run tests in every discovered Go module.
   Modules configured to skip tests are skipped.
   """
-  pub testAll(ws: Workspace!): Void @check {
+  testAll(ws: Workspace!): Void @check {
     let mods = modules(ws, includeSkipTest: false)
     let layers = mods.reduce(directory) { layers, mod =>
       layers.withDirectory(
@@ -217,7 +217,7 @@ type Go {
   Modules configured to skip generate, or without go:generate directives,
   are skipped.
   """
-  pub generateAll(ws: Workspace!): Changeset! @generate {
+  generateAll(ws: Workspace!): Changeset! @generate {
     let mods = modules(ws).filter { mod =>
       mod.skipGenerate(ws) == false and mod.hasGenerateDirectives(ws)
     }
@@ -236,12 +236,48 @@ type Go {
     after.changes(before)
   }
 
+  """
+  Tools suitable for exposing to an LLM.
+  """
+  tools: Tools! {
+    Tools(self)
+  }
+}
+
+type Tools {
+  let go: Go!
+
+  """
+  Run `go doc` to read Go package or symbol docs.
+  """
+  goDoc(
+    ws: Workspace!,
+    """
+    The module with the package dependency.
+    """
+    module: String! = ".",
+    """
+    Argument to `go doc`:
+
+      <pkg>
+      <sym>[.<methodOrField>]
+      [<pkg>.]<sym>[.<methodOrField>]
+      [<pkg>.][<sym>.]<methodOrField>
+      <pkg> <sym>[.<methodOrField>]
+    """
+    target: String!,
+    """
+    Show source code (go doc -src).
+    """
+    showSource: Boolean! = false,
+  ): String! {
+    go.module(ws, module).doc(ws, target, showSource)
+  }
 }
 
 # Keep all Dang types in one source file until Dagger v0.21.x can
 # convert Workspace arguments for installed multi-file Dang toolchains.
 # See dagger/dagger#13476.
-
 """
 A Go module rooted at a workspace-relative path.
 """
@@ -249,12 +285,12 @@ type GoModule {
   """
   Workspace-relative path of this module root.
   """
-  pub path: String!
+  path: String!
 
   """
   Go version configured on the root Go module. Null when a custom base is set.
   """
-  pub version: String
+  version: String
 
   """
   Base image used by this module's Go containers.
@@ -264,7 +300,7 @@ type GoModule {
   """
   Extra workspace-root include patterns mounted for this module's Go commands.
   """
-  pub includeExtraFiles: [String!]!
+  includeExtraFiles: [String!]!
 
   """
   Gitignore-style globs selecting which module roots to lint.
@@ -314,34 +350,35 @@ type GoModule {
       .withExec(["go", "build", "-o", "/usr/local/bin/go-includes", "."])
       .withDirectory("/ws", directory)
       .withWorkdir("/ws")
-      .withEnvVariable("DAGGER_GO_WORKSPACE_ID", toJSON(ws.id))
+      .withEnvVariable("DAGGER_GO_WORKSPACE_ID", JSON.encode(ws.id))
   }
 
   """
   Whether this module falls outside the configured lint selection.
   """
-  pub skipLint(ws: Workspace!): Boolean! {
+  skipLint(ws: Workspace!): Boolean! {
     outOfScope(lintPatterns)
   }
 
   """
   Whether this module falls outside the configured test selection.
   """
-  pub skipTest(ws: Workspace!): Boolean! {
+  skipTest(ws: Workspace!): Boolean! {
     outOfScope(testPatterns)
   }
 
   """
   Whether this module falls outside the configured go generate selection.
   """
-  pub skipGenerate(ws: Workspace!): Boolean! {
+  skipGenerate(ws: Workspace!): Boolean! {
     outOfScope(generatePatterns)
   }
 
   """
   Whether this module's Go files contain a go:generate directive.
   """
-  pub hasGenerateDirectives(ws: Workspace!): Boolean! {
+  hasGenerateDirectives(ws: Workspace!): Boolean! {
+    # TODO: just use Workspace.search once it ships
     let source = ws.directory("/", include: [subpath("**/*.go")])
     if (source.glob("**/*.go").length == 0) {
       false
@@ -428,7 +465,11 @@ type GoModule {
     generate: Boolean!,
   ): Directory! {
     allIncludesHelper(ws)
-      .withExec(["go-includes", "--all", "--output-dir", "/output"] + includeFlags(lint, test, generate))
+      .withExec(["go-includes", "--all", "--output-dir", "/output"] + includeFlags(
+        lint,
+        test,
+        generate,
+      ))
       .directory("/output")
   }
 
@@ -437,7 +478,7 @@ type GoModule {
   and local go.mod replaces reachable from this module's include graph.
   With no include flags, defaults to test inputs.
   """
-  pub includeDiscovered(
+  includeDiscovered(
     ws: Workspace!,
     lint: Boolean! = false,
     test: Boolean! = false,
@@ -454,7 +495,7 @@ type GoModule {
   """
   Directories in this module containing Go test files.
   """
-  pub testDirectories(ws: Workspace!): [GoDirectory!]! {
+  testDirectories(ws: Workspace!): [GoDirectory!]! {
     goIncludesHelper(ws)
       .withExec(
         ["go-includes", "--output", "/output", "--test-dirs", workspacePath],
@@ -489,7 +530,7 @@ type GoModule {
   """
   Built-in workspace include patterns for this module's own Go source files.
   """
-  pub includeBase: [String!]! {
+  includeBase: [String!]! {
     [
       subpath("**/*.go"),
       subpath("**/*.c"),
@@ -508,7 +549,7 @@ type GoModule {
   Final workspace include patterns used to build this module's source directory.
   With no include flags, defaults to test inputs.
   """
-  pub include(
+  include(
     ws: Workspace!,
     lint: Boolean! = false,
     test: Boolean! = false,
@@ -531,7 +572,7 @@ type GoModule {
   Workspace source mounted for this module's Go commands.
   With no include flags, defaults to test inputs.
   """
-  pub source(
+  source(
     ws: Workspace!,
     lint: Boolean! = false,
     test: Boolean! = false,
@@ -546,7 +587,7 @@ type GoModule {
   """
   Workspace testdata directories mounted while testing this module.
   """
-  pub testData(ws: Workspace!): Directory! {
+  testData(ws: Workspace!): Directory! {
     ws.directory(
       "/",
       include: [
@@ -559,7 +600,7 @@ type GoModule {
   """
   Base Go container before source files and commands are added.
   """
-  pub base: Container! {
+  base: Container! {
     baseImage
       .withoutEntrypoint
       .withWorkdir("/ws")
@@ -573,7 +614,7 @@ type GoModule {
   Run golangci-lint in this module.
   If this module is configured to skip lint, no lint check is run.
   """
-  pub lint(ws: Workspace!): Void @check {
+  lint(ws: Workspace!): Void @check {
     lintExec(ws).sync
     null
   }
@@ -582,9 +623,25 @@ type GoModule {
   Run tests in this module.
   If this module is configured to skip tests, no tests are run.
   """
-  pub test(ws: Workspace!): Void @check {
+  test(ws: Workspace!): Void @check {
     testExec(ws).sync
     null
+  }
+
+  """
+  Read the docs for a package (and symbols).
+  """
+  doc(ws: Workspace!, target: String!, showSource: Boolean! = false): String! {
+    let args = ["go", "doc"]
+    if (showSource) {
+      args += ["-src"]
+    }
+    args += [target]
+    base
+      .withDirectory(".", source(ws, generate: true))
+      .withExec(["go", "mod", "download"])
+      .withExec(args)
+      .stdout
   }
 
   """
@@ -592,7 +649,7 @@ type GoModule {
   If this module is configured to skip generate or no go:generate directives are
   found, the changeset is empty.
   """
-  pub generate(ws: Workspace!): Changeset! {
+  generate(ws: Workspace!): Changeset! {
     if (shouldGenerate(ws) == false) {
       directory.changes(directory)
     } else {
@@ -667,7 +724,6 @@ type GoModule {
         .withExec(["otelgotest", "./..."], experimentalPrivilegedNesting: true)
     }
   }
-
 }
 
 """
@@ -677,7 +733,7 @@ type GoDirectory {
   """
   Workspace-relative path of this directory.
   """
-  pub path: String!
+  path: String!
 
   """
   Workspace containing this directory.
@@ -737,7 +793,7 @@ type GoDirectory {
       .withExec(["go", "build", "-o", "/usr/local/bin/go-includes", "."])
       .withDirectory("/ws", directory)
       .withWorkdir("/ws")
-      .withEnvVariable("DAGGER_GO_WORKSPACE_ID", toJSON(ws.id))
+      .withEnvVariable("DAGGER_GO_WORKSPACE_ID", JSON.encode(ws.id))
   }
 
   """
@@ -847,9 +903,8 @@ type GoDirectory {
   """
   Run Go tests in this directory.
   """
-  pub execute(): Void @check {
+  execute: Void @check {
     testExec.sync
     null
   }
-
 }
