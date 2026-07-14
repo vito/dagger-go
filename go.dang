@@ -384,20 +384,12 @@ type GoModule {
   Whether this module's Go files contain a go:generate directive.
   """
   hasGenerateDirectives(ws: Workspace!): Boolean! {
-    # TODO: just use Workspace.search once it ships
-    let source = ws.directory("/", include: [subpath("**/*.go")])
-    if (source.glob("**/*.go").length == 0) {
-      false
-    } else {
-      source
-        .search(
-          pattern: "//go:generate",
-          literal: true,
-          filesOnly: true,
-          limit: 1,
-        ).{{filePath}}
-        .length > 0
-    }
+    ws.search(
+      pattern: "//go:generate",
+      literal: true,
+      filesOnly: true,
+      limit: 1,
+    ).{{id}}.length > 0
   }
 
   """
