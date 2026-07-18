@@ -245,7 +245,7 @@ type Go {
 }
 
 type Tools {
-  let go: Go!
+  let state: Go!
 
   agent(
     llm: LLM!,
@@ -254,30 +254,20 @@ type Tools {
   }
 
   """
-  Run `go doc` to read Go package or symbol docs.
+  Run a `go` command
   """
-  goDoc(
+  go(
     ws: Workspace!,
     """
-    The module with the package dependency.
+    Module to run in (passed as -C)
     """
     module: String! = ".",
     """
-    Argument to `go doc`:
-
-      <pkg>
-      <sym>[.<methodOrField>]
-      [<pkg>.]<sym>[.<methodOrField>]
-      [<pkg>.][<sym>.]<methodOrField>
-      <pkg> <sym>[.<methodOrField>]
+    Arguments to pass to `go`.
     """
-    target: String!,
-    """
-    Show source code (go doc -src).
-    """
-    showSource: Boolean! = false,
-  ): String! {
-    go.module(ws, module).doc(ws, target, showSource)
+    args: [String!]!,
+  ): Changeset! {
+    state.module(ws, module).run(ws, args)
   }
 }
 
@@ -627,19 +617,21 @@ type GoModule {
   }
 
   """
-  Read the docs for a package (and symbols).
+  Run an arbitrary go command and return its changes.
   """
-  doc(ws: Workspace!, target: String!, showSource: Boolean! = false): String! {
-    let args = ["go", "doc", "-u"]
-    if (showSource) {
-      args += ["-src"]
-    }
-    args += [target]
-    base
+  run(ws: Workspace!, args: [String!]! = []): Changeset! {
+    let initial = base
       .withDirectory(".", source(ws, generate: true))
-      .withExec(["go", "mod", "download"])
-      .withExec(args)
-      .stdout
+    let run = initial
+      .withEnvVariable("CACHEBUST", UUID.v7)
+      .withExec(["go", "-C", path] + args)
+    # explicitly run it, so we see logs from this tool call
+    # FIXME: ideally this would just be chained, but a Dang runtime bug
+    # prevents it
+    run.sync
+    run
+      .directory(".")
+      .changes(initial.directory("."))
   }
 
   """
