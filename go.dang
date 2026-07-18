@@ -630,7 +630,7 @@ type GoModule {
   Read the docs for a package (and symbols).
   """
   doc(ws: Workspace!, target: String!, showSource: Boolean! = false): String! {
-    let args = ["go", "doc"]
+    let args = ["go", "doc", "-u"]
     if (showSource) {
       args += ["-src"]
     }
