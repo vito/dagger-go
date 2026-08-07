@@ -250,7 +250,13 @@ type Tools {
   agent(
     llm: LLM!,
   ): LLM! @agent {
-    llm.withTools(currentNode)
+    llm
+      .withTools(currentNode)
+      .withWorkspace(
+        llm
+          .workspace
+          .withMountedCache("/go/pkg/mod", cacheVolume("go-mod")),
+      )
   }
 
   """
